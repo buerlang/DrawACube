@@ -32,8 +32,10 @@ glm::mat4 view;
 glm::mat4 projection;
 
 bool rotateView = false;
+bool displayHidenFrameBuffer = false;
 
-void pickColor();
+GLuint colorMod = 1;
+
 void ID2Color(GLuint ID, GLfloat color[3]);
 void Color2ID(GLubyte color[3], GLuint *ID);
 
@@ -120,35 +122,13 @@ int init_resources()
 	return 1;
 }
 
-void onDisplay()
+// Render in the other Frame Buffer
+void RenderSingleColor(bool offScreen)
 {
-	if (rotateView)
-	{
-		cameraPosition = glm::vec3(glm::rotate(glm::mat4(), -((GLint)mouseX - (GLint)lastMouseX) * 2.0f / screenWidth, cameraUp) * glm::vec4(cameraPositionSaved, 1.0f));
-	}
-	view = glm::lookAt(cameraPosition, cameraTarget, cameraUp);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glUseProgram(program);
-
-	glUniformMatrix4fv(glGetUniformLocation(program, "view"), 1, GL_FALSE, glm::value_ptr(view));
-	glUniformMatrix4fv(glGetUniformLocation(program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-
-	// draw the behind cube 
-	glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(cube1.model));
-	cube1.Draw_i();
-
-	// draw the front cube 
-	glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(cube2.model));
-	cube2.Draw_i();
-	
-}
-
-void pickColor()
-{
-	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+	if (!offScreen)
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	else
+		glBindFramebuffer(GL_FRAMEBUFFER, FBO);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glUseProgram(pickProgram);
@@ -169,6 +149,46 @@ void pickColor()
 	ID2Color(cube2.ID, pickColor);
 	glUniform3fv(glGetUniformLocation(pickProgram, "pickColor"), 1, pickColor);
 	cube2.Draw_i();
+}
+
+// Called everytime in the Main Loop
+void onDisplay()
+{
+	if (rotateView)
+	{
+		cameraPosition = glm::vec3(glm::rotate(glm::mat4(), -((GLint)mouseX - (GLint)lastMouseX) * 2.0f / screenWidth, cameraUp) * glm::vec4(cameraPositionSaved, 1.0f));
+	}
+	view = glm::lookAt(cameraPosition, cameraTarget, cameraUp);
+
+	if (displayHidenFrameBuffer) 
+	{
+		RenderSingleColor(false);
+		return;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glUseProgram(program);
+
+	glUniformMatrix4fv(glGetUniformLocation(program, "view"), 1, GL_FALSE, glm::value_ptr(view));
+	glUniformMatrix4fv(glGetUniformLocation(program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+	// draw the behind cube 
+	glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(cube1.model));
+	cube1.Draw_i();
+
+	// draw the front cube 
+	glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(cube2.model));
+	cube2.Draw_i();
+	
+}
+
+// Picking Using Color Buffer 
+// from the other hiden Frame Buffer
+// Called when mouse clicked
+void DoPick()
+{
+	RenderSingleColor(true);
 
 	glFlush();
 	glFinish();
@@ -190,9 +210,9 @@ void pickColor()
 
 void ID2Color(GLuint ID, GLfloat color[3])
 {
-	color[0] = ((ID & 0x00ff0000) >> 16) / 255.0f;
-	color[1] = ((ID & 0x0000ff00) >> 8) / 255.0f;
-	color[2] = ((ID & 0x000000ff) >> 0) / 255.0f;
+	color[0] = ((ID & 0x00ff0000) >> 16) / 255.0f * colorMod;
+	color[1] = ((ID & 0x0000ff00) >> 8) / 255.0f * colorMod;
+	color[2] = ((ID & 0x000000ff) >> 0) / 255.0f * colorMod;
 }
 
 void Color2ID(GLubyte color[3], GLuint *ID)
@@ -211,6 +231,10 @@ static void error_callback(int error, const char* description)
 }
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
+	if (key == GLFW_KEY_UP && action == GLFW_PRESS)
+		colorMod += 10;
+	if (key == GLFW_KEY_DOWN && action == GLFW_PRESS)
+		colorMod -= 10;
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
 }
@@ -225,9 +249,14 @@ static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos)
 /* Callback Function: called when mouse clicked */
 static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
+	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	{
+		displayHidenFrameBuffer = !displayHidenFrameBuffer;
+		colorMod = 1;
+	}
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
-		pickColor();
+		DoPick();
 	}
 	if (button == GLFW_MOUSE_BUTTON_MIDDLE)
 	{
