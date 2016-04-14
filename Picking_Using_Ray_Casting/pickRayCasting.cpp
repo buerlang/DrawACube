@@ -30,9 +30,12 @@ glm::vec3 cameraUp(0.0f, 1.0f, 0.0f);
 glm::mat4 view;
 glm::mat4 projection;
 
-bool rotateView = false;
+glm::vec3 rayBegin = glm::vec3();
+glm::vec3 rayEnd = glm::vec3();
 
-void pickColor();
+bool rotateView = false;
+bool drawLines = false;
+
 void ID2Color(GLuint ID, GLfloat color[3]);
 void Color2ID(GLubyte color[3], GLuint *ID);
 
@@ -87,7 +90,7 @@ bool TestRayOBBIntersection(
 
 	glm::vec3 OBBposition_worldspace(modelMatrix[3].x, modelMatrix[3].y, modelMatrix[3].z);
 
-	glm::vec3 delta = OBBposition_worldspace - ray_origin;
+	glm::vec3 delta = OBBposition_worldspace - ray_origin;	// from Ray Origin to OBB position
 
 	// Test intersection with the 2 planes perpendicular to the OBB's X axis
 	{
@@ -110,7 +113,6 @@ bool TestRayOBBIntersection(
 
 			if (tMax < tMin)
 				return false;
-
 		}
 		else { // Rare case : the ray is almost parallel to the planes, so they don't have any "intersection"
 			if (-e + aabb_min.x > 0.0f || -e + aabb_max.x < 0.0f)
@@ -139,7 +141,6 @@ bool TestRayOBBIntersection(
 				tMin = t1;
 			if (tMin > tMax)
 				return false;
-
 		}
 		else {
 			if (-e + aabb_min.y > 0.0f || -e + aabb_max.y < 0.0f)
@@ -168,7 +169,6 @@ bool TestRayOBBIntersection(
 				tMin = t1;
 			if (tMin > tMax)
 				return false;
-
 		}
 		else {
 			if (-e + aabb_min.z > 0.0f || -e + aabb_max.z < 0.0f)
@@ -179,6 +179,22 @@ bool TestRayOBBIntersection(
 	intersection_distance = tMin;
 	return true;
 
+}
+
+void DrawLine(glm::vec3 ori, glm::vec3 tar)
+{
+	RenderObject line = RenderObject(0);
+	GLfloat vertices[] = {
+		ori.x, ori.y, ori.z, 1.0f, 1.0f, 1.0f, 1.0f,
+		tar.x, tar.y, tar.z, 1.0f, 1.0f, 1.0f, 1.0f
+	};
+	GLuint indeces[] = { 0, 1 };
+	line.BindMesh_p3_c4(vertices, sizeof(vertices), indeces, sizeof(indeces));
+	line.SetModel(glm::mat4());
+	glBindVertexArray(line.VAO);
+	glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(line.model));
+	glDrawElements(GL_LINES, 2, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(0);
 }
 
 int init_resources()
@@ -265,12 +281,21 @@ void onDisplay()
 
 	// draw the behind cube 
 	glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(cube1.model));
-	cube1.Draw_i();
+	if(drawLines)
+		cube1.Draw_i(GL_LINE_LOOP);
+	else
+		cube1.Draw_i();
+
 
 	// draw the front cube 
 	glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(cube2.model));
-	cube2.Draw_i();
+	if (drawLines)
+		cube2.Draw_i(GL_LINE_LOOP);
+	else
+		cube2.Draw_i();
 
+
+	DrawLine(rayBegin, rayEnd);
 }
 
 
@@ -302,6 +327,8 @@ void DoPick()
 		intersection_distance)
 		) {
 		printf("Now Picked: Cube 1\n");
+		rayBegin = ray_origin;
+		rayEnd = ray_origin + ray_direction * intersection_distance;
 	}
 	else if (TestRayOBBIntersection(
 		ray_origin,
@@ -312,9 +339,13 @@ void DoPick()
 		intersection_distance)
 		) {
 		printf("Now Picked: Cube 2\n");
+		rayBegin = ray_origin;
+		rayEnd = ray_origin + ray_direction * intersection_distance;
 	}
 	else {
 		printf("Now Picked: None\n");
+		rayBegin = glm::vec3();
+		rayEnd = glm::vec3();
 	}
 
 }
@@ -359,6 +390,10 @@ static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos)
 // Callback Function: called when mouse clicked
 static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
+	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	{
+		drawLines = !drawLines;
+	}
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
 		DoPick();
